@@ -40,7 +40,7 @@
             margin: 10 auto;
         }
         
-        .tabs .tabs {
+        .tabs .tab {
             width: 75px;
             height: 32px;
             padding: 10px 20px;
@@ -195,37 +195,8 @@
             padding-left: 4%
         }
     </style>
-    <script type="text/javascript" src="profile_data_test.js"></script>
-    <script>
-        var cycleData = {};
-        var lmemData = {};
+    <!-- <script type="text/javascript" src="profile_data_test.js"></script> -->
 
-        function generateTabs() {;
-            for (var i = 1; i <= Object.keys(window).filter(key => key.startsWith('time_data')).length; i++) {
-                cycleData[i] = window['time_data' + i]
-                lmemData[i] = window['lmem_op_record' + i];
-
-                //create tab page based on the dataset
-                var tabId = 'tab' + i;
-                var tabContentId = 'tab-content' + i;
-                var newTab = $('<div class="tab">Core' + i + '</div>');
-                var newTabContent = $('<div id="' + tabContentId + '"></div>').appendTo('#tab-content');;
-                var timeContainerId = 'time-container' + i;
-                var newTimeContainer = $('<div id="' + timeContainerId + '"></div>').appendTo('#content-container');
-                console.log("newtab:", newTab)
-                console.log("timecontainer:", newTimeContainer)
-            }
-            // Trigger click on the first tab
-            $('.tab').first().click();
-        }
-        console.log("cycledata:", cycleData)
-        console.log("lmemData:", lmemData)
-
-
-        $(document).ready(function() {
-            generateTabs();
-        });
-    </script>
     <script>
         var all_charts = []
         var filtered_data = []
@@ -537,7 +508,7 @@
                         tip += `<br>cmd: ${usec_str(params.value[5])}`
                         tip += `<br>func_type: ${params.value[3]}`
                         tip += `<br>func_name: ${params.value[6]}`
-                        tip += `<br>${params.value[7]}`
+                        tip += `<br>${params.value[params.value.length-1]}`
                         return tip;
                     },
                     axisPointer: {
@@ -1535,7 +1506,7 @@
             node.appendChild(table)
         }
 
-        //生成uArch rate折线图
+        //生成uArch rate点图
         function createRateLine(containerId, data, title) {
 
             let xData = data.map(item => item[5]); // 提取cmd_id作为横轴
@@ -1575,7 +1546,10 @@
                 series: [{
                     data: data.map(item => [item[5], item[4] * 100]),
                     type: 'scatter',
-                    symbolSize: 10,
+                    symbolSize: (value) => {
+                        let duration = data.find(d => d[5] === value[0])[3] - data.find(d => d[5] === value[0])[2];
+                        return (value[1] < 100 && duration > 0) ? 10 + (100 - value[1]) * duration / 100 : 10;
+                    },
                     itemStyle: {
                         color: (param) => param.value[1] < 100 ? 'red' : 'blue'
                     }
@@ -1685,13 +1659,162 @@
         }
     </script>
 
-    <script type="text/javascript">
-        if (typeof(page_caption) !== "undefined") {
-            document.querySelector("#page-caption").innerText = page_caption
+    <script>
+        function loadJSON(callback) {
+            var xhr = new XMLHttpRequest();
+            xhr.overrideMimeType("application/json");
+            xhr.open('GET', 'data.json', true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == "200") {
+                    callback(JSON.parse(xhr.responseText));
+                }
+            };
+            xhr.send(null);
         }
-        // Store time data in an object instead of separate variables
+        var page_caption;
+        var summary_caption;
+        var summary_header;
+        var summary_data;
+        var categories;
+        var filter_cols;
+        var lmem_partition;
+        var time_header;
+        var cycleData = {};
+        var lmemData = {};
 
-        const tabs = document.getElementsByClassName('tabs')
+        function generateTabs() {;
+            for (var i = 1; i <= Object.keys(window).filter(key => key.startsWith('time_data')).length; i++) {
+                cycleData[i] = window['time_data' + i]
+                lmemData[i] = window['lmem_op_record' + i];
+
+                //create tab page based on the dataset
+                var tabId = 'tab' + i;
+                var tabContentId = 'tab-content' + i;
+                var newTab = $('<div class="tab">Core' + i + '</div>');
+                var newTabContent = $('<div id="' + tabContentId + '"></div>').appendTo('#tab-content');;
+                var timeContainerId = 'time-container' + i;
+                var newTimeContainer = $('<div id="' + timeContainerId + '"></div>').appendTo('#content-container');
+
+            }
+            // Trigger click on the first tab
+            $('.tab').first().click();
+        }
+
+        $(document).ready(function() {
+            loadJSON(function(data) {
+                // Assign data to window object
+                for (let key in data) {
+                    if (key.startsWith('time_data') || key.startsWith('lmem_op_record')) {
+                        window[key] = data[key];
+                    }
+                }
+                page_caption = data.page_caption
+                summary_caption = data.summary_caption
+                summary_header = data.summary_header;
+                summary_data = data.summary_data;
+                categories = data.categories;
+                filter_cols = data.filter_cols;
+                lmem_partition = data.lmem_partition;
+                time_header = data.time_header
+
+                generateTabs();
+                console.log("page_caption:", page_caption)
+                console.log("cycledata:", cycleData);
+                console.log("lmemData:", lmemData);
+
+                initPage();
+                const tabs = document.getElementsByClassName('tabs');
+                console.log("tabs:", tabs)
+                let dataCount = Object.keys(cycleData).length;
+                console.log("datacount:", dataCount)
+                if (dataCount > 1) {
+                    let tab = document.createElement('div');
+                    tab.className = 'tab';
+                    tab.innerText = 'Overall View';
+                    tabs[0].appendChild(tab);
+                }
+
+                for (let i = 1; i <= dataCount; i++) {
+                    let tab = document.createElement('div');
+                    tab.className = 'tab';
+                    tab.innerText = 'Core ' + i;
+                    tabs[0].appendChild(tab);
+                }
+
+                tabs[0].addEventListener("click", function(e) {
+                    if (!e.target.classList.contains('tab')) return;
+                    let tabName = e.target.outerText; //get the name of the tab
+                    console.log("tabName:", tabName)
+                    const checkBoxContainers = [
+                        document.querySelector(".config-item"),
+                        document.querySelector(".config-localmem"),
+                        document.querySelector(".config-item:nth-child(3)")
+                    ];
+                    var checkBoxes = ["show_data_table", "show_localmem", "tiu_uarch_rate"];
+
+                    if (tabName === "Overall View") {
+                        // Hide the checkbox containers
+                        checkBoxContainers.forEach((container) => {
+                            container.style.display = 'none';
+                        });
+
+                        // Dispose all the charts
+                        charts.forEach(chart => chart.dispose());
+                        checkBoxes.forEach((checkBoxId) => {
+                            const checkBox = document.getElementById(checkBoxId);
+                            if (checkBox) {
+                                checkBox.checked = false;
+                                checkBox.dispatchEvent(new Event('change'));
+                            }
+                        });
+                        charts = []; // Clear the charts array
+                        document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none');
+                        document.getElementById('summary-table').style.display = 'block';
+                        document.getElementById('summary-table').innerHTML = '';
+                        if (typeof(summary_header) !== "undefined") {
+                            showDataTable("summary-table", summary_header, summary_data, summary_caption)
+                        }
+                    } else {
+                        console.log("我在core page")
+                        checkBoxContainers.forEach((container) => {
+                            container.style.display = 'inline-block';
+                        });
+
+                        document.getElementById('summary-table').style.display = 'none';
+                        let id = e.target.outerText.split(' ')[1]; // Get the ID number from tab name
+                        document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none'); // Hide all time containers
+
+                        if (cycleData[id] !== undefined) {
+                            document.getElementById(`time-container${id}`).style.display = 'block';
+                            processAndShowData(`time-container${id}`, cycleData[id], ['chart1', 'chart2', 'chart3'], lmemData[id], id);
+                        }
+
+                        setTimeout(function() {
+                            document.getElementById("rate-line-container").style.display = "none"
+                            console.log("暂时性关闭展示")
+                        }, 100)
+                        if (document.getElementById("tiu_uarch_rate").checked) {
+                            setTimeout(function() {
+                                document.getElementById("rate-line-container").style.display = "block"
+                            }, 200)
+                        }
+                        //check the checkboxes and update data if checked
+                        attachListeners(checkBoxes, id);
+                    }
+                });
+            });
+
+
+        });
+
+
+        function initPage() {
+            if (typeof(page_caption) !== "undefined") {
+                document.querySelector("#page-caption").innerText = page_caption;
+            }
+        }
+
+
 
         function attachListeners(checkBoxes, id) {
             checkBoxes.forEach((checkBoxId) => {
@@ -1699,75 +1822,11 @@
                 if (checkBox && checkBox.checked) {
                     checkBox.click();
                     checkBox.click();
-                    //const event = new Event('change');
-                    //checkBox.dispatchEvent(event);
                 }
             });
         }
+        // Store time data in an object instead of separate variables
 
-
-
-        tabs[0].addEventListener("click", function(e) {
-            if (!e.target.classList.contains('tab')) return;
-            let tabName = e.target.outerText; //get the name of the tab
-            console.log("tabName:", tabName)
-            const checkBoxContainers = [
-                document.querySelector(".config-item"),
-                document.querySelector(".config-localmem"),
-                document.querySelector(".config-item:nth-child(3)")
-            ];
-            var checkBoxes = ["show_data_table", "show_localmem", "tiu_uarch_rate"];
-
-            if (tabName === "Overall View") {
-                // Hide the checkbox containers
-                checkBoxContainers.forEach((container) => {
-                    container.style.display = 'none';
-                });
-
-                // Dispose all the charts
-                charts.forEach(chart => chart.dispose());
-                checkBoxes.forEach((checkBoxId) => {
-                    const checkBox = document.getElementById(checkBoxId);
-                    if (checkBox) {
-                        checkBox.checked = false;
-                        checkBox.dispatchEvent(new Event('change'));
-                    }
-                });
-                charts = []; // Clear the charts array
-                document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none');
-                document.getElementById('summary-table').style.display = 'block';
-                document.getElementById('summary-table').innerHTML = '';
-                if (typeof(summary_header) !== "undefined") {
-                    showDataTable("summary-table", summary_header, summary_data, summary_caption)
-                }
-            } else {
-                console.log("我在core page")
-                checkBoxContainers.forEach((container) => {
-                    container.style.display = 'inline-block';
-                });
-
-                document.getElementById('summary-table').style.display = 'none';
-                let id = e.target.outerText.split(' ')[1]; // Get the ID number from tab name
-                document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none'); // Hide all time containers
-
-                if (window['cycleData' + id] !== undefined) {
-                    document.getElementById(`time-container${id}`).style.display = 'block';
-                    processAndShowData(`time-container${id}`, cycleData[id], ['chart1', 'chart2', 'chart3'], window['lmemData' + id], id);
-                }
-
-                setTimeout(function() {
-                    document.getElementById("rate-line-container").style.display = "none"
-                    console.log("暂时性关闭展示")
-                }, 100)
-                if (document.getElementById("tiu_uarch_rate").checked) {
-                    setTimeout(function() {
-                        document.getElementById("rate-line-container").style.display = "block"
-                    }, 200)
-                }
-                //check the checkboxes and update data if checked
-                attachListeners(checkBoxes, id);
-            }
-        });
 
         const processAndShowData = (containerId, cycleData, chartIds, lmemRecord, num) => {
             setTimeout(() => {
