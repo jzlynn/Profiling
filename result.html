@@ -4,35 +4,19 @@
 <head>
     <meta charset="utf-8">
     <script type="text/javascript" src="echarts.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
     <h1 id="page-caption" style="margin: 2em 0 2em 0; text-align: center;">PerfAI</h1>
-    <div class="tabs">
-        <div class="tab bg-r">Overall View</div>
-        <div class="tab">Core 1</div>
-        <div class="tab">Core 2</div>
-        <div class="tab">Core 3</div>
-        <div class="tab">Core 4</div>
-        <div class="tab">Core 5</div>
-        <div class="tab">Core 6</div>
-        <div class="tab">Core 7</div>
-        <div class="tab">Core 8</div>https://wiki.sophgo.com/display/BMNTOOL/20230808
-    </div>
-    <!-- 表1 -->
-
+    <div class="tabs" id="tabs"></div>
     <div id="tab-container"></div>
     <div id="content-container"></div>
 
-    <div id="time-container1"></div>
-    <div id="time-container2"></div>
-    <div id="time-container3"></div>
-    <div id="time-container4"></div>
-    <div id="time-container5"></div>
-    <div id="time-container6"></div>
-    <div id="time-container7"></div>
-    <div id="time-container8"></div>
+    <!-- 表1 -->
     <div id="summary-table"></div>
+
     <!-- 表2、3、4 -->
     <div id="config-container">
         <div class="config-item"><input type="checkbox" id="show_data_table" value="Show data" />Show data</div>
@@ -46,7 +30,6 @@
     <div id="rate-line-container"></div>
     <hr>
     <div id="pie-chart-container">
-        <!-- <h4>Outside circle: Function Types<br>Inner cycle: Function Names</h4> -->
         <div id="chart1" class="chart"></div>
         <div id="chart2" class="chart"></div>
         <div id="chart3" class="chart"></div>
@@ -57,7 +40,7 @@
             margin: 10 auto;
         }
         
-        .tabs div {
+        .tabs .tab {
             width: 75px;
             height: 32px;
             padding: 10px 20px;
@@ -212,6 +195,36 @@
             padding-left: 4%
         }
     </style>
+    <script type="text/javascript" src="profile_data_test.js"></script>
+    <script>
+        var cycleData = {};
+        var lmemData = {};
+
+        function generateTabs() {;
+            for (var i = 1; i <= Object.keys(window).filter(key => key.startsWith('time_data')).length; i++) {
+                cycleData[i] = window['time_data' + i]
+                lmemData[i] = window['lmem_op_record' + i];
+
+                //create tab page based on the dataset
+                var tabId = 'tab' + i;
+                var tabContentId = 'tab-content' + i;
+                var newTab = $('<div class="tab">Core' + i + '</div>');
+                var newTabContent = $('<div id="' + tabContentId + '"></div>').appendTo('#tab-content');;
+                var timeContainerId = 'time-container' + i;
+                var newTimeContainer = $('<div id="' + timeContainerId + '"></div>').appendTo('#content-container');
+
+            }
+            // Trigger click on the first tab
+            $('.tab').first().click();
+        }
+
+
+        $(document).ready(function() {
+            generateTabs();
+            console.log("cycledata:", cycleData)
+            console.log("lmemData:", lmemData)
+        });
+    </script>
     <script>
         var all_charts = []
         var filtered_data = []
@@ -223,7 +236,6 @@
             }
         }
     </script>
-    <script type="text/javascript" src="profile_data_test.js"></script>
     <script>
         function sortData(data, is_asc) {
             index = []
@@ -524,7 +536,7 @@
                         tip += `<br>cmd: ${usec_str(params.value[5])}`
                         tip += `<br>func_type: ${params.value[3]}`
                         tip += `<br>func_name: ${params.value[6]}`
-                        tip += `<br>${params.value[7]}`
+                        tip += `<br>${params.value[params.value.length-1]}`
                         return tip;
                     },
                     axisPointer: {
@@ -1676,30 +1688,9 @@
         if (typeof(page_caption) !== "undefined") {
             document.querySelector("#page-caption").innerText = page_caption
         }
-        // Store time data in an object instead of separate variables
-        var cycleData = {
-            '1': time_data1,
-            '2': time_data2,
-            '3': time_data3,
-            '4': time_data4,
-            '5': time_data5,
-            '6': time_data6,
-            '7': time_data7,
-            '8': time_data8
-        };
 
-        var lmemData = {
-            '1': lmem_op_record1,
-            '2': lmem_op_record2,
-            '3': lmem_op_record3,
-            '4': lmem_op_record4,
-            '5': lmem_op_record5,
-            '6': lmem_op_record6,
-            '7': lmem_op_record7,
-            '8': lmem_op_record8
-        };
-
-        const tabs = document.getElementsByClassName('tabs')
+        const tabs = document.getElementsByClassName('tabs');
+        console.log("tabs:", tabs)
 
         function attachListeners(checkBoxes, id) {
             checkBoxes.forEach((checkBoxId) => {
@@ -1707,15 +1698,25 @@
                 if (checkBox && checkBox.checked) {
                     checkBox.click();
                     checkBox.click();
-                    //const event = new Event('change');
-                    //checkBox.dispatchEvent(event);
                 }
             });
         }
 
-        window.onload = function() {
-            // Trigger click on the first tab
-            document.querySelector('.tab').click();
+        // Store time data in an object instead of separate variables
+        let dataCount = Object.keys(window).filter(key => key.startsWith('time_data')).length;
+        console.log("dataCount", dataCount)
+        if (dataCount > 1) {
+            let tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.innerText = 'Overall View';
+            tabs[0].appendChild(tab);
+        }
+
+        for (let i = 1; i <= dataCount; i++) {
+            let tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.innerText = 'Core ' + i;
+            tabs[0].appendChild(tab);
         }
 
         tabs[0].addEventListener("click", function(e) {
