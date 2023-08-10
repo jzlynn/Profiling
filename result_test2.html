@@ -16,6 +16,7 @@
 
     <!-- 表1 -->
     <div id="summary-table"></div>
+    <div id="overall-view-container"></div>
 
     <!-- 表2、3、4 -->
     <div id="config-container">
@@ -195,8 +196,35 @@
             padding-left: 4%
         }
     </style>
-    <!-- <script type="text/javascript" src="profile_data_test.js"></script> -->
+    <script type="text/javascript" src="profile_data_test.js"></script>
+    <script>
+        var cycleData = {};
+        var lmemData = {};
 
+        function generateTabs() {;
+            for (var i = 1; i <= Object.keys(window).filter(key => key.startsWith('time_data')).length; i++) {
+                cycleData[i] = window['time_data' + i]
+                lmemData[i] = window['lmem_op_record' + i];
+
+                //create tab page based on the dataset
+                var tabId = 'tab' + i;
+                var tabContentId = 'tab-content' + i;
+                var newTab = $('<div class="tab">Core' + i + '</div>');
+                var newTabContent = $('<div id="' + tabContentId + '"></div>').appendTo('#tab-content');;
+                var timeContainerId = 'time-container' + i;
+                var newTimeContainer = $('<div id="' + timeContainerId + '"></div>').appendTo('#content-container');
+
+            }
+            // Trigger click on the first tab
+            $('.tab').first().click();
+        }
+
+        $(document).ready(function() {
+            generateTabs();
+            console.log("cycledata:", cycleData)
+            console.log("lmemData:", lmemData)
+        });
+    </script>
     <script>
         var all_charts = []
         var filtered_data = []
@@ -437,6 +465,16 @@
                 }
             }
         }
+
+        function highlightColor(data, indices, color) {
+            indices.forEach(index => {
+                if (!data[index].itemStyle) {
+                    data[index].itemStyle = {};
+                }
+                data[index].itemStyle.color = color;
+            });
+        }
+
         // ["category", "begin_time", "end_time", "func_type", "height", "cmd", "func_name","uarch rate" "info"]
         function showTimeChart(chart, header, raw_data, categories, color_col, title) {
             let data = []
@@ -475,6 +513,27 @@
                 )
             }
             console.log("new_categories:", new_categories)
+
+            let allData = getAllTimeData();
+            if (hasColumns(raw_data, ['Msg_Id', 'Sd/Wt_Count'])) {
+                raw_data.forEach(item => {
+                    let msgIdIndex = header.indexOf('Msg_Id');
+                    let keywordIndex = header.indexOf('func_name');
+                    let countIndex = header.indexOf('Sd/Wt_Count');
+                    let beginTimeIndex = header.indexOf('begin_time(cycle)');
+                    if (item[msgIdIndex]) {
+                        let keyword = item[keywordIndex].include('send') ? 'send' : item[keywordIndex].includes('wait') ? 'wait' : null;
+                        if (keyword) {
+                            //根据sd/wt_count的值来确定要高亮显示的数据块
+                            let count = item[countIndex];
+                            let closestCmds = findMsgCmds(item[beginTimeIndex], keyword, count, allData);
+                            let highlightColor = keywork === 'send' ? 'red' : 'yellow';
+                            let indicesToHighlight = closestCmds.map(cmd => raw_data.indexOf(cmd))
+                            highlightColor(raw_data, indicesToHighlight, highlightColor);
+                        }
+                    }
+                });
+            }
 
             chart.on("click", (params) => {
                 if (params.seriesIndex === 0) {
@@ -750,6 +809,55 @@
                 })
             }
             return chartHandle
+        }
+
+        function createOverallContainer(dataCount) {
+            let overallViewContainer = document.getElementById('overall-view-container');
+            for (let i = 1; i <= dataCount; i++) {
+                let container = document.createElement('div');
+                container.id = 'time-container' + i;
+                overallViewContainer.appendChild(container)
+            }
+        }
+
+        function processAllData(header, categories, filter_cols) {
+            //collect all time_data 
+            let datasets = Object.keys(window).filter(key => key.startsWith('time_data')).map(key => window[key]);
+            let allCharts = []
+            datasets.forEach((data, index) => {
+                let containerId = 'time-container' + (index + 1);
+                let chartInstance = showDataInChart(containerId, header, data, categories, filter_cols, 3);
+                allCharts.push(chartInstance)
+            })
+            return allCharts;
+        }
+
+        function getAllTimeData() {
+            return Object.keys(window).filter(key => key.startsWith('time_data')).map(key => window[key]);
+        }
+
+        function findMsgCmds(MsgIdTime, keyword, count, allData) {
+            let closestCmds = [];
+            allData.forEach(data => {
+                data.forEach(item => {
+                    let funcName = item[header.indexOf('func_name')];
+                    let beginTime = item[header.indexOf('begin_time(cycle)')];
+                    if (funcName.includes(keyword)) {
+                        closestCmds.push({
+                            distance: Math.abs(beginTime - msgIdTime),
+                            data: item
+                        })
+                    }
+                })
+            })
+
+            closestCmds.sort((a, b) => a.distance - b.distance);
+            return closestCmds.slice(0, count).map(item => item.data);
+        }
+
+        function hasColumns(data, columns) {
+            if (data.length === 0) return false;
+            return columns.every(col => data[0].includes(col));
         }
     </script>
     <script type="text/javascript">
@@ -1540,15 +1648,21 @@
                 tooltip: {
                     trigger: 'item',
                     formatter: function(params) {
-                        return `Cmd ID: ${params.value[0]}<br/>Rate: ${params.value[1].toFixed(2)}%`
+                        let [cmdId, rate] = params.value;
+                        let matchingData = data.find(d => d[5] === cmdId);
+                        let duration = matchingData[2] - matchingData[1];
+                        return `Cmd ID: ${cmdId}<br/>Rate: ${rate.toFixed(2)}%<br/>Duration: ${duration}cycles`
                     }
                 },
                 series: [{
                     data: data.map(item => [item[5], item[4] * 100]),
                     type: 'scatter',
                     symbolSize: (value) => {
-                        let duration = data.find(d => d[5] === value[0])[3] - data.find(d => d[5] === value[0])[2];
-                        return (value[1] < 100 && duration > 0) ? 10 + (100 - value[1]) * duration / 100 : 10;
+                        let duration = data.find(d => d[5] === value[0])[2] - data.find(d => d[5] === value[0])[1];
+                        let baseSize = 5; // Adjust this as needed
+                        let scaleFactor = 0.05; // Adjust this as needed
+                        let adjustedSize = baseSize + (100 - value[1]) * duration / 100 * scaleFactor;
+                        return (value[1] < 100 && duration > 0) ? adjustedSize : baseSize;
                     },
                     itemStyle: {
                         color: (param) => param.value[1] < 100 ? 'red' : 'blue'
@@ -1659,162 +1773,13 @@
         }
     </script>
 
-    <script>
-        function loadJSON(callback) {
-            var xhr = new XMLHttpRequest();
-            xhr.overrideMimeType("application/json");
-            xhr.open('GET', 'data.json', true);
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState == 4 && xhr.status == "200") {
-                    callback(JSON.parse(xhr.responseText));
-                }
-            };
-            xhr.send(null);
-        }
-        var page_caption;
-        var summary_caption;
-        var summary_header;
-        var summary_data;
-        var categories;
-        var filter_cols;
-        var lmem_partition;
-        var time_header;
-        var cycleData = {};
-        var lmemData = {};
-
-        function generateTabs() {;
-            for (var i = 1; i <= Object.keys(window).filter(key => key.startsWith('time_data')).length; i++) {
-                cycleData[i] = window['time_data' + i]
-                lmemData[i] = window['lmem_op_record' + i];
-
-                //create tab page based on the dataset
-                var tabId = 'tab' + i;
-                var tabContentId = 'tab-content' + i;
-                var newTab = $('<div class="tab">Core' + i + '</div>');
-                var newTabContent = $('<div id="' + tabContentId + '"></div>').appendTo('#tab-content');;
-                var timeContainerId = 'time-container' + i;
-                var newTimeContainer = $('<div id="' + timeContainerId + '"></div>').appendTo('#content-container');
-
-            }
-            // Trigger click on the first tab
-            $('.tab').first().click();
+    <script type="text/javascript">
+        if (typeof(page_caption) !== "undefined") {
+            document.querySelector("#page-caption").innerText = page_caption
         }
 
-        $(document).ready(function() {
-            loadJSON(function(data) {
-                // Assign data to window object
-                for (let key in data) {
-                    if (key.startsWith('time_data') || key.startsWith('lmem_op_record')) {
-                        window[key] = data[key];
-                    }
-                }
-                page_caption = data.page_caption
-                summary_caption = data.summary_caption
-                summary_header = data.summary_header;
-                summary_data = data.summary_data;
-                categories = data.categories;
-                filter_cols = data.filter_cols;
-                lmem_partition = data.lmem_partition;
-                time_header = data.time_header
-
-                generateTabs();
-                console.log("page_caption:", page_caption)
-                console.log("cycledata:", cycleData);
-                console.log("lmemData:", lmemData);
-
-                initPage();
-                const tabs = document.getElementsByClassName('tabs');
-                console.log("tabs:", tabs)
-                let dataCount = Object.keys(cycleData).length;
-                console.log("datacount:", dataCount)
-                if (dataCount > 1) {
-                    let tab = document.createElement('div');
-                    tab.className = 'tab';
-                    tab.innerText = 'Overall View';
-                    tabs[0].appendChild(tab);
-                }
-
-                for (let i = 1; i <= dataCount; i++) {
-                    let tab = document.createElement('div');
-                    tab.className = 'tab';
-                    tab.innerText = 'Core ' + i;
-                    tabs[0].appendChild(tab);
-                }
-
-                tabs[0].addEventListener("click", function(e) {
-                    if (!e.target.classList.contains('tab')) return;
-                    let tabName = e.target.outerText; //get the name of the tab
-                    console.log("tabName:", tabName)
-                    const checkBoxContainers = [
-                        document.querySelector(".config-item"),
-                        document.querySelector(".config-localmem"),
-                        document.querySelector(".config-item:nth-child(3)")
-                    ];
-                    var checkBoxes = ["show_data_table", "show_localmem", "tiu_uarch_rate"];
-
-                    if (tabName === "Overall View") {
-                        // Hide the checkbox containers
-                        checkBoxContainers.forEach((container) => {
-                            container.style.display = 'none';
-                        });
-
-                        // Dispose all the charts
-                        charts.forEach(chart => chart.dispose());
-                        checkBoxes.forEach((checkBoxId) => {
-                            const checkBox = document.getElementById(checkBoxId);
-                            if (checkBox) {
-                                checkBox.checked = false;
-                                checkBox.dispatchEvent(new Event('change'));
-                            }
-                        });
-                        charts = []; // Clear the charts array
-                        document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none');
-                        document.getElementById('summary-table').style.display = 'block';
-                        document.getElementById('summary-table').innerHTML = '';
-                        if (typeof(summary_header) !== "undefined") {
-                            showDataTable("summary-table", summary_header, summary_data, summary_caption)
-                        }
-                    } else {
-                        console.log("我在core page")
-                        checkBoxContainers.forEach((container) => {
-                            container.style.display = 'inline-block';
-                        });
-
-                        document.getElementById('summary-table').style.display = 'none';
-                        let id = e.target.outerText.split(' ')[1]; // Get the ID number from tab name
-                        document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none'); // Hide all time containers
-
-                        if (cycleData[id] !== undefined) {
-                            document.getElementById(`time-container${id}`).style.display = 'block';
-                            processAndShowData(`time-container${id}`, cycleData[id], ['chart1', 'chart2', 'chart3'], lmemData[id], id);
-                        }
-
-                        setTimeout(function() {
-                            document.getElementById("rate-line-container").style.display = "none"
-                            console.log("暂时性关闭展示")
-                        }, 100)
-                        if (document.getElementById("tiu_uarch_rate").checked) {
-                            setTimeout(function() {
-                                document.getElementById("rate-line-container").style.display = "block"
-                            }, 200)
-                        }
-                        //check the checkboxes and update data if checked
-                        attachListeners(checkBoxes, id);
-                    }
-                });
-            });
-
-
-        });
-
-
-        function initPage() {
-            if (typeof(page_caption) !== "undefined") {
-                document.querySelector("#page-caption").innerText = page_caption;
-            }
-        }
-
-
+        const tabs = document.getElementsByClassName('tabs');
+        console.log("tabs:", tabs)
 
         function attachListeners(checkBoxes, id) {
             checkBoxes.forEach((checkBoxId) => {
@@ -1825,8 +1790,89 @@
                 }
             });
         }
-        // Store time data in an object instead of separate variables
 
+        // Store time data in an object instead of separate variables
+        var dataCount = Object.keys(window).filter(key => key.startsWith('time_data')).length;
+        console.log("dataCount", dataCount)
+        if (dataCount > 1) {
+            let tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.innerText = 'Overall View';
+            tabs[0].appendChild(tab);
+        }
+
+        for (let i = 1; i <= dataCount; i++) {
+            let tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.innerText = 'Core ' + i;
+            tabs[0].appendChild(tab);
+        }
+
+        tabs[0].addEventListener("click", function(e) {
+            if (!e.target.classList.contains('tab')) return;
+            let tabName = e.target.outerText; //get the name of the tab
+            console.log("tabName:", tabName)
+            const checkBoxContainers = [
+                document.querySelector(".config-item"),
+                document.querySelector(".config-localmem"),
+                document.querySelector(".config-item:nth-child(3)")
+            ];
+            var checkBoxes = ["show_data_table", "show_localmem", "tiu_uarch_rate"];
+
+            if (tabName === "Overall View") {
+                // Hide the checkbox containers
+                checkBoxContainers.forEach((container) => {
+                    container.style.display = 'none';
+                });
+
+                // Dispose all the charts
+                charts.forEach(chart => chart.dispose());
+                checkBoxes.forEach((checkBoxId) => {
+                    const checkBox = document.getElementById(checkBoxId);
+                    if (checkBox) {
+                        checkBox.checked = false;
+                        checkBox.dispatchEvent(new Event('change'));
+                    }
+                });
+                charts = []; // Clear the charts array
+                document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none');
+                document.getElementById('summary-table').style.display = 'block';
+                document.getElementById('summary-table').innerHTML = '';
+                if (typeof(summary_header) !== "undefined") {
+                    showDataTable("summary-table", summary_header, summary_data, summary_caption)
+                }
+                createOverallContainer(dataCount);
+                let allCharts = processAllData(time_header, categories, filter_cols);
+                echarts.connect(allCharts)
+            } else {
+                console.log("我在core page")
+                echarts.disconnect();
+                checkBoxContainers.forEach((container) => {
+                    container.style.display = 'inline-block';
+                });
+
+                document.getElementById('summary-table').style.display = 'none';
+                let id = e.target.outerText.split(' ')[1]; // Get the ID number from tab name
+                document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none'); // Hide all time containers
+
+                if (cycleData[id] !== undefined) {
+                    document.getElementById(`time-container${id}`).style.display = 'block';
+                    processAndShowData(`time-container${id}`, cycleData[id], ['chart1', 'chart2', 'chart3'], lmemData[id], id);
+                }
+
+                setTimeout(function() {
+                    document.getElementById("rate-line-container").style.display = "none"
+                    console.log("暂时性关闭展示")
+                }, 100)
+                if (document.getElementById("tiu_uarch_rate").checked) {
+                    setTimeout(function() {
+                        document.getElementById("rate-line-container").style.display = "block"
+                    }, 200)
+                }
+                //check the checkboxes and update data if checked
+                attachListeners(checkBoxes, id);
+            }
+        });
 
         const processAndShowData = (containerId, cycleData, chartIds, lmemRecord, num) => {
             setTimeout(() => {
