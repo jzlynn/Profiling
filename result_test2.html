@@ -1809,6 +1809,7 @@
         }
 
         tabs[0].addEventListener("click", function(e) {
+            echarts.disconnect();
             if (!e.target.classList.contains('tab')) return;
             let tabName = e.target.outerText; //get the name of the tab
             console.log("tabName:", tabName)
@@ -1842,11 +1843,9 @@
                     showDataTable("summary-table", summary_header, summary_data, summary_caption)
                 }
                 createOverallContainer(dataCount);
-                let allCharts = processAllData(time_header, categories, filter_cols);
-                echarts.connect(allCharts)
+                processAllData(time_header, categories, filter_cols);
             } else {
                 console.log("我在core page")
-                echarts.disconnect();
                 checkBoxContainers.forEach((container) => {
                     container.style.display = 'inline-block';
                 });
