@@ -195,6 +195,11 @@
             height: 500px;
             padding-left: 4%
         }
+        
+        [id^="overall-time-container"] {
+            width: 80%;
+            height: 500px;
+        }
     </style>
     <script type="text/javascript" src="profile_data_test.js"></script>
     <script>
@@ -824,25 +829,19 @@
             console.log("overallViewContainer", overallViewContainer)
         }
 
-        function processAllData(header, categories, filter_cols) {
+        function processAllData(header, categories) {
             //collect all time_data 
             let datasets = Object.keys(window).filter(key => key.startsWith('time_data')).map(key => window[key]);
             let allCharts = []
             datasets.forEach((data, index) => {
                 let containerId = 'overall-time-container' + (index + 1);
                 let dom = document.getElementById(containerId);
-                if (!dom) {
-                    let overallViewContainer = document.getElementById('overall-view-container');
-                    let container = document.createElement('div');
-                    container.id = containerId;
-                    container.style.height = '500px';
-                    container.style.width = '90%';
-                    overallViewContainer.appendChild(conatiner);
-                    dom = container;
+                if (dom) {
+                    let chartHandle = echarts.init(dom);
+                    allCharts.push(chartHandle);
+                    showTimeChart(chartHandle, header, data, categories, 3, "Overall View - Core " + (index + 1), false)
                 }
-                let chartHandle = echarts.init(dom);
-                allCharts.push(chartHandle);
-                showTimeChart(chartHandle, header, data, categories, 3, null, false)
+
             })
             echarts.connect(allCharts);
         }
@@ -1859,7 +1858,7 @@
                     showDataTable("summary-table", summary_header, summary_data, summary_caption)
                 }
                 createOverallContainer(dataCount);
-                processAllData(time_header, categories, filter_cols);
+                processAllData(time_header, categories);
             } else {
                 console.log("我在core page")
                 checkBoxContainers.forEach((container) => {
