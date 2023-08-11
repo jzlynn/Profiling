@@ -476,7 +476,7 @@
         }
 
         // ["category", "begin_time", "end_time", "func_type", "height", "cmd", "func_name","uarch rate" "info"]
-        function showTimeChart(chart, header, raw_data, categories, color_col, title) {
+        function showTimeChart(chart, header, raw_data, categories, color_col, title, isDetailed = true) {
             let data = []
             let category_time = []
             let category_count = []
@@ -512,29 +512,7 @@
                     "\nProportion=" + (category_time[i] / totalcycles * 100).toFixed(2) + "%"
                 )
             }
-            console.log("new_categories:", new_categories)
-
-            let allData = getAllTimeData();
-            if (hasColumns(raw_data, ['Msg_Id', 'Sd/Wt_Count'])) {
-                raw_data.forEach(item => {
-                    let msgIdIndex = header.indexOf('Msg_Id');
-                    let keywordIndex = header.indexOf('func_name');
-                    let countIndex = header.indexOf('Sd/Wt_Count');
-                    let beginTimeIndex = header.indexOf('begin_time(cycle)');
-                    if (item[msgIdIndex]) {
-                        let keyword = item[keywordIndex].include('send') ? 'send' : item[keywordIndex].includes('wait') ? 'wait' : null;
-                        if (keyword) {
-                            //根据sd/wt_count的值来确定要高亮显示的数据块
-                            let count = item[countIndex];
-                            let closestCmds = findMsgCmds(item[beginTimeIndex], keyword, count, allData);
-                            let highlightColor = keywork === 'send' ? 'red' : 'yellow';
-                            let indicesToHighlight = closestCmds.map(cmd => raw_data.indexOf(cmd))
-                            highlightColor(raw_data, indicesToHighlight, highlightColor);
-                        }
-                    }
-                });
-            }
-
+            //console.log("new_categories:", new_categories)
             chart.on("click", (params) => {
                 if (params.seriesIndex === 0) {
                     let selectedData = params.value;
@@ -588,33 +566,6 @@
                         }
                     }
                 },
-                title: {
-                    text: title ? title : "Cycle Chart",
-                    left: 'center'
-                },
-                dataZoom: [{
-                    type: 'slider',
-                    filterMode: 'weakFilter',
-                    showDataShadow: false,
-                    height: 10,
-                    borderColor: 'transparent',
-                    backgroundColor: '#e2e2e2',
-                    handleIcon: 'M10.7,11.9H9.3c-4.9,0.3-8.8,4.4-8.8,9.4c0,5,3.9,9.1,8.8,9.4h1.3c4.9-0.3,8.8-4.4,8.8-9.4C19.5,16.3,15.6,12.2,10.7,11.9z M13.3,24.4H6.7v-1.2h6.6z M13.3,22H6.7v-1.2h6.6z M13.3,19.6H6.7v-1.2h6.6z', // jshint ignore:line
-                    handleSize: 20,
-                    handleStyle: {
-                        shadowBlur: 6,
-                        shadowOffsetX: 1,
-                        shadowOffsetY: 2,
-                        shadowColor: '#aaa'
-                    },
-                    bottom: 40,
-                    realtime: true,
-                    labelFormatter: ''
-                }, {
-                    type: 'inside',
-                    realtime: true,
-                    filterMode: 'weakFilter'
-                }],
                 grid: {
                     height: 500,
                 },
@@ -655,6 +606,58 @@
                     data: data
                 }]
             };
+
+            if (isDetailed) {
+                option.dataZoom = [{
+                    type: 'slider',
+                    filterMode: 'weakFilter',
+                    showDataShadow: false,
+                    height: 10,
+                    borderColor: 'transparent',
+                    backgroundColor: '#e2e2e2',
+                    handleIcon: 'M10.7,11.9H9.3c-4.9,0.3-8.8,4.4-8.8,9.4c0,5,3.9,9.1,8.8,9.4h1.3c4.9-0.3,8.8-4.4,8.8-9.4C19.5,16.3,15.6,12.2,10.7,11.9z M13.3,24.4H6.7v-1.2h6.6z M13.3,22H6.7v-1.2h6.6z M13.3,19.6H6.7v-1.2h6.6z', // jshint ignore:line
+                    handleSize: 20,
+                    handleStyle: {
+                        shadowBlur: 6,
+                        shadowOffsetX: 1,
+                        shadowOffsetY: 2,
+                        shadowColor: '#aaa'
+                    },
+                    bottom: 40,
+                    realtime: true,
+                    labelFormatter: ''
+                }, {
+                    type: 'inside',
+                    realtime: true,
+                    filterMode: 'weakFilter'
+                }];
+                option.title = {
+                    text: title ? title : "Cycle Chart",
+                    left: 'center'
+                };
+            }
+
+            let allData = getAllTimeData();
+            if (hasColumns(raw_data, ['Msg_Id', 'Sd/Wt_Count'])) {
+                console.log("check columns")
+                raw_data.forEach(item => {
+                    let msgIdIndex = header.indexOf('Msg_Id');
+                    let keywordIndex = header.indexOf('func_name');
+                    let countIndex = header.indexOf('Sd/Wt_Count');
+                    let beginTimeIndex = header.indexOf('begin_time(cycle)');
+                    if (item[msgIdIndex]) {
+                        let keyword = item[keywordIndex].include('send') ? 'send' : item[keywordIndex].includes('wait') ? 'wait' : null;
+                        if (keyword) {
+                            //根据sd/wt_count的值来确定要高亮显示的数据块
+                            let count = item[countIndex];
+                            let closestCmds = findMsgCmds(item[beginTimeIndex], keyword, count, allData);
+                            let highlightColor = keywork === 'send' ? 'red' : 'yellow';
+                            let indicesToHighlight = closestCmds.map(cmd => raw_data.indexOf(cmd))
+                            highlightColor(raw_data, indicesToHighlight, highlightColor);
+                        }
+                    }
+                });
+            }
 
             if (option && typeof option === "object") {
                 chart.setOption(option, true);
@@ -815,9 +818,10 @@
             let overallViewContainer = document.getElementById('overall-view-container');
             for (let i = 1; i <= dataCount; i++) {
                 let container = document.createElement('div');
-                container.id = 'time-container' + i;
+                container.id = 'overall-time-container' + i;
                 overallViewContainer.appendChild(container)
             }
+            console.log("overallViewContainer", overallViewContainer)
         }
 
         function processAllData(header, categories, filter_cols) {
@@ -825,11 +829,22 @@
             let datasets = Object.keys(window).filter(key => key.startsWith('time_data')).map(key => window[key]);
             let allCharts = []
             datasets.forEach((data, index) => {
-                let containerId = 'time-container' + (index + 1);
-                let chartInstance = showDataInChart(containerId, header, data, categories, filter_cols, 3);
-                allCharts.push(chartInstance)
+                let containerId = 'overall-time-container' + (index + 1);
+                let dom = document.getElementById(containerId);
+                if (!dom) {
+                    let overallViewContainer = document.getElementById('overall-view-container');
+                    let container = document.createElement('div');
+                    container.id = containerId;
+                    container.style.height = '500px';
+                    container.style.width = '90%';
+                    overallViewContainer.appendChild(conatiner);
+                    dom = container;
+                }
+                let chartHandle = echarts.init(dom);
+                allCharts.push(chartHandle);
+                showTimeChart(chartHandle, header, data, categories, 3, null, false)
             })
-            return allCharts;
+            echarts.connect(allCharts);
         }
 
         function getAllTimeData() {
@@ -1810,6 +1825,7 @@
 
         tabs[0].addEventListener("click", function(e) {
             echarts.disconnect();
+
             if (!e.target.classList.contains('tab')) return;
             let tabName = e.target.outerText; //get the name of the tab
             console.log("tabName:", tabName)
