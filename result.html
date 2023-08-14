@@ -465,7 +465,51 @@
                 }
             }
         }
+
         // ["category", "begin_time", "end_time", "func_type", "height", "cmd", "func_name","uarch rate" "info"]
+
+        function createSelector(labelText, options, onChanged) {
+            let node = document.createElement("div")
+            node.className = "filter-block"
+            let label = document.createElement("label")
+            label.innerText = labelText
+            label.className = "filter-label"
+            node.appendChild(label)
+            let select = document.createElement("select")
+            select.className = "filter-select"
+            for (let o of options) {
+                option = document.createElement("option")
+                option.value = o
+                option.innerText = "" + o
+                select.appendChild(option)
+            }
+            select.onchange = (e) => {
+                let node = e.target
+                let filter_blocks = node.parentNode.parentNode.children
+                let value_map = {}
+                for (let i = 0; i < filter_blocks.length; i++) {
+                    if (filter_blocks[i].className != "filter-block") continue
+                    let labelNode = filter_blocks[i].children[0]
+                    let valueNode = filter_blocks[i].children[1]
+                    if (valueNode.value == "--") continue
+                    value_map[labelNode.innerText] = valueNode.value
+                }
+                if (onChanged)
+                    onChanged(value_map)
+            }
+            node.appendChild(select)
+            return node
+        }
+
+        function uniqueColumnData(data, colIndex) {
+            let col_data = []
+            for (let i = 0; i < data.length; i++) {
+                if (col_data.includes(data[i][colIndex])) continue;
+                col_data.push(data[i][colIndex])
+            }
+            return col_data
+        }
+        //data: 'category', 'begin_time', 'end_time', 'func_type', 'height', 'cmd', 'func_name', 'info'
         function showTimeChart(chart, header, raw_data, categories, color_col, title) {
             let data = []
             let category_time = []
@@ -656,48 +700,6 @@
             }
         }
 
-        function createSelector(labelText, options, onChanged) {
-            let node = document.createElement("div")
-            node.className = "filter-block"
-            let label = document.createElement("label")
-            label.innerText = labelText
-            label.className = "filter-label"
-            node.appendChild(label)
-            let select = document.createElement("select")
-            select.className = "filter-select"
-            for (let o of options) {
-                option = document.createElement("option")
-                option.value = o
-                option.innerText = "" + o
-                select.appendChild(option)
-            }
-            select.onchange = (e) => {
-                let node = e.target
-                let filter_blocks = node.parentNode.parentNode.children
-                let value_map = {}
-                for (let i = 0; i < filter_blocks.length; i++) {
-                    if (filter_blocks[i].className != "filter-block") continue
-                    let labelNode = filter_blocks[i].children[0]
-                    let valueNode = filter_blocks[i].children[1]
-                    if (valueNode.value == "--") continue
-                    value_map[labelNode.innerText] = valueNode.value
-                }
-                if (onChanged)
-                    onChanged(value_map)
-            }
-            node.appendChild(select)
-            return node
-        }
-
-        function uniqueColumnData(data, colIndex) {
-            let col_data = []
-            for (let i = 0; i < data.length; i++) {
-                if (col_data.includes(data[i][colIndex])) continue;
-                col_data.push(data[i][colIndex])
-            }
-            return col_data
-        }
-        //data: 'category', 'begin_time', 'end_time', 'func_type', 'height', 'cmd', 'func_name', 'info'
         function showDataInChart(elem_id, header, data, categories, filter_cols, color_col) {
             filtered_data = data
             var dom = document.getElementById(elem_id);
@@ -815,7 +817,8 @@
                 const sublist = [...op];
                 const hexAddr = op[3];
                 const decAddr = hexToDec(hexAddr);
-                const realAddr = decAddr - base - suffixnum * hexToDec('1000000');
+                //const realAddr = decAddr - base - suffixnum * hexToDec('1000000');
+                const realAddr = decAddr - suffixnum * hexToDec('1000000');
                 sublist[3] = realAddr;
                 result.push(sublist);
             }
@@ -1534,7 +1537,7 @@
             node.appendChild(table)
         }
 
-        //生成uArch rate折线图
+        //生成uArch rate点图
         function createRateLine(containerId, data, title) {
 
             let xData = data.map(item => item[5]); // 提取cmd_id作为横轴
@@ -1568,13 +1571,22 @@
                 tooltip: {
                     trigger: 'item',
                     formatter: function(params) {
-                        return `Cmd ID: ${params.value[0]}<br/>Rate: ${params.value[1].toFixed(2)}%`
+                        let [cmdId, rate] = params.value;
+                        let matchingData = data.find(d => d[5] === cmdId);
+                        let duration = matchingData[2] - matchingData[1];
+                        return `Cmd ID: ${cmdId}<br/>Rate: ${rate.toFixed(2)}%<br/>Duration: ${duration}cycles`
                     }
                 },
                 series: [{
                     data: data.map(item => [item[5], item[4] * 100]),
                     type: 'scatter',
-                    symbolSize: 10,
+                    symbolSize: (value) => {
+                        let duration = data.find(d => d[5] === value[0])[2] - data.find(d => d[5] === value[0])[1];
+                        let baseSize = 5; // Adjust this as needed
+                        let scaleFactor = 0.05; // Adjust this as needed
+                        let adjustedSize = baseSize + (100 - value[1]) * duration / 100 * scaleFactor;
+                        return (value[1] < 100 && duration > 0) ? adjustedSize : baseSize;
+                    },
                     itemStyle: {
                         color: (param) => param.value[1] < 100 ? 'red' : 'blue'
                     }
@@ -1649,10 +1661,11 @@
                     left: 'center',
                     top: 'top',
                     textStyle: {
-                        fontSize: 16
+                        fontSize: 18
                     },
                     subtextStyle: {
-                        align: 'center'
+                        align: 'center',
+                        fontSize: 14
                     }
                 },
                 tooltip: {
@@ -1669,12 +1682,14 @@
                     name: 'Function Types',
                     type: 'pie',
                     radius: ['60%', '90%'],
-                    data: typeData
+                    data: typeData,
+                    fontSize: 12
                 }, {
                     name: 'Function Names',
                     type: 'pie',
                     radius: ['0%', '50%'],
-                    data: nameData
+                    data: nameData,
+                    fontSize: 12
                 }]
             };
 
