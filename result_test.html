@@ -206,7 +206,7 @@
             padding-left: 4%
         }
     </style>
-    <script type="text/javascript" src="profile_data_test.js"></script>
+    <script type="text/javascript" src="profile_data_test1.js"></script>
     <script>
         var cycleData = {};
         var lmemData = {};
@@ -794,9 +794,6 @@
                         set_chart_time_range(begin_usec - range * 1.2, end_usec + range * 2)
                     }
                     let updatedData = data.map((item, index) => {
-                        //console.log("item:", item)
-                        //console.log("index:", index)
-                        //console.log("params.index", params.dataIndex)
                         // Copy the itemStyle object if it exists, otherwise create a new one
                         let itemStyle = item.itemStyle ? {...item.itemStyle
                         } : {
@@ -1522,7 +1519,8 @@
             }
 
             let usec_cols = [1, 2, header.length - 2]
-            let new_data = []
+            let new_data = [] //single category's data
+            console.log("new_data:", new_data)
             for (let d of data) {
                 if (d[category_idx] == current_category) {
                     let item = []
@@ -1538,7 +1536,6 @@
             console.log("data[highlightedRow]:", data[highlightedRow])
             if (highlightedRow !== null) {
                 for (let i = 0; i < new_data.length; i++) {
-                    console.log("newdata[i]:", new_data[i])
                     if (data[highlightedRow][0] === new_data[i][0] &&
                         data[highlightedRow][1] === new_data[i][1] &&
                         data[highlightedRow][2] === new_data[i][2]) {
@@ -1560,6 +1557,7 @@
                 if (r === filtered_highlightedRow) {
                     row_body.style.background = "red";
                     highlightedRowElement = row_body; // Store the highlighted row element to pinpoint the location
+                    previouslyHighlight = row_body;
                 }
                 row_body.onclick = (e) => {
                     if (previouslyHighlight) {
@@ -1568,8 +1566,8 @@
                     row_body.style.background = "red";
                     previouslyHighlight = row_body;
                     let range = row_data[2] - row_data[1];
-                    updateChartColor(new_data, row_data[1], row_data[2]);
-                    set_chart_time_range(row_data[1] - range * 0.25, row_data[2] + range * 0.25);
+                    updateChartColor(data, row_data[1], row_data[2]);
+                    set_chart_time_range(row_data[1] - range * 0.5, row_data[2] + range * 0.5);
                 }
                 body.appendChild(row_body);
 
@@ -1579,10 +1577,8 @@
                     diff_cycle = row_data[1] - new_data[r - 1][2];
                 }
                 row_data.push(diff_cycle);
-
                 // Update new_data with the new row data
                 new_data[r] = row_data;
-
                 for (let c = 0; c < row_data.length; c++) {
                     let col_body = document.createElement("td");
                     if (c === row_data.length - 1 || usec_cols.indexOf(c) >= 0) {
