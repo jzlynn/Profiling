@@ -701,11 +701,11 @@
             }
         }
 
+        let chartHandle = null
 
         function showDataInChart(elem_id, header, data, categories, filter_cols, color_col) {
             filtered_data = data
             var dom = document.getElementById(elem_id);
-            let chartHandle = null
             if (dom.childNodes.length == 0) {
                 chartNode = document.createElement("div")
                 chartNode.style = "height:650px;width:95%";
@@ -1532,6 +1532,7 @@
                 }
                 row_body.onclick = (e) => {
                     let range = row_data[2] - row_data[1];
+                    updateChartColor(new_data, row_data[1], row_data[2]);
                     set_chart_time_range(row_data[1] - range * 0.25, row_data[2] + range * 0.25);
                 }
                 body.appendChild(row_body);
@@ -1575,6 +1576,37 @@
                 row.appendChild(col)
             }
             node.appendChild(table)
+        }
+
+        function updateChartColor(data, begin, end) {
+            if (!chartHandle) return;
+
+            // Find the index of the data item that matches the begin and end times
+            let matchedIndex = data.findIndex(item => item[1] === begin && item[2] === end);
+            console.log("matchedIndex for table to chart:", matchedIndex)
+                // Create a copy of the data array with the color updated for the matched item
+            let updatedData = data.map((item, index) => {
+                let itemStyle = {
+                    normal: {
+                        color: colors[calcColorIndex(item[color_col], colors.length)]
+                    }
+                };
+                if (index === matchedIndex) {
+                    itemStyle.normal.color = 'red';
+                }
+                return {
+                    name: `${item[3]}`,
+                    value: item,
+                    itemStyle: itemStyle
+                };
+            });
+
+            // Update the chart with the new data
+            chartHandle.setOption({
+                series: [{
+                    data: updatedData
+                }]
+            });
         }
 
         //生成uArch rate点图
@@ -1836,9 +1868,10 @@
             }
         });
 
+        let color_col = 6; //index of the data to display the color in chart
         const processAndShowData = (containerId, cycleData, chartIds, lmemRecord, num) => {
             setTimeout(() => {
-                let chart = showDataInChart(containerId, time_header, cycleData, categories, filter_cols, 6);
+                let chart = showDataInChart(containerId, time_header, cycleData, categories, filter_cols, color_col);
                 if (chart) { // Only push when chart is not null
                     all_charts.push(chart);
                 }
