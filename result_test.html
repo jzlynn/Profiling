@@ -367,11 +367,11 @@
     <script type="text/javascript">
         function usec_str(u) { //删去了后缀cycle单位
             if (u < 1000) { //u.toFixed()
-                return `${u}`
+                return `${u.toFixed(0)}`
             } else if (u < 1000000) {
-                return `${u}`
+                return `${u.toFixed(0)}`
             } else { //if(u<10000000000000000) {
-                return `${(u)}`
+                return `${(u.toFixed(0))}`
             }
         }
 
@@ -405,7 +405,7 @@
             ];
             params.context.rendered = true;
 
-            let tip = api.value(3) + '\n' + usec_str(api.value(2) - api.value(1))
+            let tip = api.value(6) + '\n' + usec_str(api.value(2) - api.value(1))
             var tipRect = echarts.format.getTextRect(tip);
             if (tipRect.width > w) {
                 tip = ""
@@ -511,8 +511,9 @@
             }
             return col_data
         }
-        //data: 'category', 'begin_time', 'end_time', 'func_type', 'height', 'cmd', 'func_name', 'info'
+        //raw_data: 'category', 'begin_time', 'end_time', 'func_type', 'height', 'cmd', 'func_name', 'info'
         function showTimeChart(chart, header, raw_data, categories, color_col, title) {
+            console.log("show time chart ing!")
             let data = []
             let category_time = []
             let category_count = []
@@ -536,6 +537,7 @@
                     }
                 })
             }
+            console.log("data:", data)
             let new_categories = [];
             let totalcycles = 0;
             for (let i = 0; i < category_time.length; i++) {
@@ -630,10 +632,10 @@
                         formatter: function(val) {
                             return (val);
                         }
-                    }
+                    },
                 },
                 yAxis: {
-                    data: new_categories,
+                    data: new_categories
 
                 },
                 toolbox: {
@@ -646,7 +648,6 @@
                         saveAsImage: {}
                     }
                 },
-
                 series: [{
                     type: 'custom',
                     renderItem: renderItem,
@@ -657,19 +658,9 @@
                         x: [1, 2],
                         y: 0
                     },
-                    data: data
+                    data: data,
                 }]
             };
-
-            chart.on("click", (params) => {
-                if (params.seriesIndex === 0) {
-                    let selectedData = params.value;
-                    let begin = selectedData[1]
-                    let end = selectedData[2]
-                    console.log("Chart clicked with begin:", begin, "end:", end);
-                    updateDataTable(begin, end);
-                }
-            });
 
             if (option && typeof option === "object") {
                 chart.setOption(option, true);
@@ -679,21 +670,28 @@
         }
 
         function updateDataTable(begin, end) {
-            let matchedRow = null;
+            let matchedIndex = null;
             let matchedCategory = null;
+            let rangeStart = null;
+            let rangeEnd = null;
+
             for (let i = 0; i < filtered_data.length; i++) {
                 let rowBegin = filtered_data[i][1];
                 let rowEnd = filtered_data[i][2];
                 if (rowBegin === begin && rowEnd === end) {
-                    matchedRow = filtered_data[i];
+                    matchedIndex = i;
                     matchedCategory = filtered_data[i][0];
+                    rangeStart = Math.max(0, i - 10);
+                    rangeEnd = Math.min(filtered_data.length, i + 11);
                     break;
                 }
             }
-            if (matchedRow) {
+
+            if (matchedIndex !== null) {
+                let displayData = filtered_data.slice(rangeStart, rangeEnd);
                 // If a matching row is found in the data, update the table to display it
-                showFilterDataTable("data-list", time_header, [matchedRow], "Cycle Information ", categories);
-                console.log("Matching row found", matchedRow);
+                showFilterDataTable("data-list", time_header, displayData, "Cycle Information ", categories, matchedCategory, matchedIndex - rangeStart);
+                console.log("Matching row found", filtered_data[matchedIndex]);
                 let categorySelector = document.getElementById("table_filter");
                 if (categorySelector) {
                     categorySelector.value = matchedCategory;
@@ -702,6 +700,7 @@
                 console.log("Matching row not found for begin:", begin, "end:", end);
             }
         }
+
 
         function showDataInChart(elem_id, header, data, categories, filter_cols, color_col) {
             filtered_data = data
@@ -775,10 +774,45 @@
                     let val = params.value
                     if (params.seriesIndex == 0) {
                         let range = val[2] - val[1]
-                        let begin_usec = val[1] - range * 0
-                        let end_usec = val[2] + range * 0
+                        let begin_usec = val[1]
+                        let end_usec = val[2]
                         set_chart_time_range(begin_usec, end_usec)
                     }
+                    let updatedData = data.map((item, index) => {
+                        console.log("item:", item)
+                        console.log("index:", index)
+                        console.log("params.index", params.dataIndex)
+                            // Copy the itemStyle object if it exists, otherwise create a new one
+                        let itemStyle = item.itemStyle ? {...item.itemStyle
+                        } : {
+                            normal: {
+                                color: colors[calcColorIndex(item[color_col], colors.length)]
+                            }
+                        };
+                        // If this is the clicked item, set the color to red
+                        if (index === params.dataIndex) {
+                            itemStyle.normal.color = 'red';
+                        }
+                        return {
+                            name: `${item[3]}`,
+                            value: item,
+                            itemStyle: itemStyle
+                        };
+                    });
+
+                    // Update the chart with the new data
+                    chartHandle.setOption({
+                        series: [{
+                            data: updatedData
+                        }]
+                    });
+
+                    let selectedData = params.value;
+                    let begin = selectedData[1];
+                    let end = selectedData[2];
+                    console.log("Chart clicked with begin:", begin, "end:", end);
+
+                    updateDataTable(begin, end);
                 })
             }
             return chartHandle
@@ -1421,11 +1455,10 @@
             }
         }
 
-        function showFilterDataTable(id, header, data, caption, categories, current_category) {
+        function showFilterDataTable(id, header, data, caption, categories, current_category, highlightedRow = null) {
             console.log("The function filterDataTable is called!")
             let max_show = 100
             let category_idx = 0
-            let current_categories = categories;
             let node = document.getElementById(id)
             if (!node) return;
             if (typeof(current_category) == "undefined") {
@@ -1493,6 +1526,10 @@
             for (let r = 0; r < show_len; r++) {
                 let row_data = new_data[r];
                 let row_body = document.createElement("tr");
+
+                if (r === highlightedRow) {
+                    row_body.style.background = "red"
+                }
                 row_body.onclick = (e) => {
                     let range = row_data[2] - row_data[1];
                     set_chart_time_range(row_data[1] - range * 0.25, row_data[2] + range * 0.25);
@@ -1801,7 +1838,7 @@
 
         const processAndShowData = (containerId, cycleData, chartIds, lmemRecord, num) => {
             setTimeout(() => {
-                let chart = showDataInChart(containerId, time_header, cycleData, categories, filter_cols, 3);
+                let chart = showDataInChart(containerId, time_header, cycleData, categories, filter_cols, 6);
                 if (chart) { // Only push when chart is not null
                     all_charts.push(chart);
                 }
