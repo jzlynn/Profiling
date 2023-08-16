@@ -101,6 +101,15 @@
             padding-left: 2%;
         }
         
+        #data-list {
+            display: none;
+            height: 600px;
+            overflow-y: auto;
+            /* Enables vertical scrolling */
+            width: 90%;
+            margin-left: 5%;
+        }
+        
         td,
         th {
             padding: 0;
@@ -669,29 +678,33 @@
             return chart
         }
 
-        function updateDataTable(begin, end) {
+        let clickedRowIndex = null;
+
+        function updateDataTable(begin, end, original_data) {
+            console.log("calling updateDataTable")
             let matchedIndex = null;
             let matchedCategory = null;
-            let rangeStart = null;
-            let rangeEnd = null;
 
-            for (let i = 0; i < filtered_data.length; i++) {
-                let rowBegin = filtered_data[i][1];
-                let rowEnd = filtered_data[i][2];
+            //console.log("filtered_data:", filtered_data)
+            for (let i = 0; i < original_data.length; i++) {
+                let rowBegin = original_data[i][1];
+                let rowEnd = original_data[i][2];
                 if (rowBegin === begin && rowEnd === end) {
                     matchedIndex = i;
-                    matchedCategory = filtered_data[i][0];
-                    rangeStart = Math.max(0, i - 10);
-                    rangeEnd = Math.min(filtered_data.length, i + 11);
+                    matchedCategory = original_data[i][0];
+                    rangeStart = 0; // Math.max(0, i - 10);
+                    rangeEnd = original_data.length; // Math.min(filtered_data.length, i + 11);
                     break;
                 }
             }
 
             if (matchedIndex !== null) {
-                let displayData = filtered_data.slice(rangeStart, rangeEnd);
+                //let displayData = filtered_data.slice(rangeStart, rangeEnd); this sould limit the size of data table but result in refreshing error
+                let highlightedRow = matchedIndex - rangeStart;
+                clickedRowIndex = matchedIndex;
+
                 // If a matching row is found in the data, update the table to display it
-                showFilterDataTable("data-list", time_header, displayData, "Cycle Information ", categories, matchedCategory, matchedIndex - rangeStart);
-                console.log("Matching row found", filtered_data[matchedIndex]);
+                showFilterDataTable("data-list", time_header, original_data, "Cycle Information ", categories, matchedCategory, matchedIndex);
                 let categorySelector = document.getElementById("table_filter");
                 if (categorySelector) {
                     categorySelector.value = matchedCategory;
@@ -704,6 +717,8 @@
         let chartHandle = null
 
         function showDataInChart(elem_id, header, data, categories, filter_cols, color_col) {
+            let original_data = [...data];
+            //console.log("original_data", original_data)
             filtered_data = data
             var dom = document.getElementById(elem_id);
             if (dom.childNodes.length == 0) {
@@ -714,7 +729,6 @@
                 filterBlock.style = "text-align: center";
                 dom.appendChild(filterBlock)
                 chartHandle = echarts.init(chartNode);
-                filter_data = data
                 for (let col of filter_cols) {
                     let col_data = uniqueColumnData(data, col)
                     col_data.sort()
@@ -753,6 +767,7 @@
                 }
                 showTimeChart(chartHandle, header, data, categories, color_col)
             }
+            console.log("options in showDataInChart:", chartHandle.getOption()); // Print the chart's options
             if (chartHandle) {
                 chartHandle.set_time_range = function(begin_usec, end_usec) {
                         chartHandle.dispatchAction({
@@ -776,13 +791,13 @@
                         let range = val[2] - val[1]
                         let begin_usec = val[1]
                         let end_usec = val[2]
-                        set_chart_time_range(begin_usec, end_usec)
+                        set_chart_time_range(begin_usec - range * 1.2, end_usec + range * 2)
                     }
                     let updatedData = data.map((item, index) => {
-                        console.log("item:", item)
-                        console.log("index:", index)
-                        console.log("params.index", params.dataIndex)
-                            // Copy the itemStyle object if it exists, otherwise create a new one
+                        //console.log("item:", item)
+                        //console.log("index:", index)
+                        //console.log("params.index", params.dataIndex)
+                        // Copy the itemStyle object if it exists, otherwise create a new one
                         let itemStyle = item.itemStyle ? {...item.itemStyle
                         } : {
                             normal: {
@@ -791,6 +806,9 @@
                         };
                         // If this is the clicked item, set the color to red
                         if (index === params.dataIndex) {
+                            console.log("item:", item)
+                            console.log("index:", index)
+                            console.log("params.index", params.dataIndex)
                             itemStyle.normal.color = 'red';
                         }
                         return {
@@ -812,7 +830,7 @@
                     let end = selectedData[2];
                     console.log("Chart clicked with begin:", begin, "end:", end);
 
-                    updateDataTable(begin, end);
+                    updateDataTable(begin, end, original_data);
                 })
             }
             return chartHandle
@@ -1457,7 +1475,8 @@
 
         function showFilterDataTable(id, header, data, caption, categories, current_category, highlightedRow = null) {
             console.log("The function filterDataTable is called!")
-            let max_show = 100
+            console.log("options in showFilterData:", chartHandle.getOption());
+            let max_show = data.length
             let category_idx = 0
             let node = document.getElementById(id)
             if (!node) return;
@@ -1514,23 +1533,40 @@
                     new_data.push(item)
                 }
             }
-
+            let filtered_highlightedRow = null;
+            console.log("highlightedRow:", highlightedRow)
+            console.log("data[highlightedRow]:", data[highlightedRow])
+            if (highlightedRow !== null) {
+                for (let i = 0; i < new_data.length; i++) {
+                    console.log("newdata[i]:", new_data[i])
+                    if (data[highlightedRow][0] === new_data[i][0] &&
+                        data[highlightedRow][1] === new_data[i][1] &&
+                        data[highlightedRow][2] === new_data[i][2]) {
+                        filtered_highlightedRow = i;
+                        break;
+                    }
+                }
+            }
+            console.log("filtered_highlightedRow:", filtered_highlightedRow)
             let body = table.createTBody()
             let show_len = max_show > new_data.length ? new_data.length : max_show;
 
-            //let display_header = header.filter((h, idx) => h !== "Msg_Id" && h !== "Sd/Wt_Count");
-            //console.log("display_header:", display_header)
-            //let new_usec_cols = usec_cols.map(idx => display_header.indexOf(header[idx]));
-            //console.log("new_usec_cols:", new_usec_cols)
-
+            let highlightedRowElement = null;
+            let previouslyHighlight = null;
             for (let r = 0; r < show_len; r++) {
                 let row_data = new_data[r];
                 let row_body = document.createElement("tr");
 
-                if (r === highlightedRow) {
-                    row_body.style.background = "red"
+                if (r === filtered_highlightedRow) {
+                    row_body.style.background = "red";
+                    highlightedRowElement = row_body; // Store the highlighted row element to pinpoint the location
                 }
                 row_body.onclick = (e) => {
+                    if (previouslyHighlight) {
+                        previouslyHighlight.style.background = ""; // Reset to original background
+                    }
+                    row_body.style.background = "red";
+                    previouslyHighlight = row_body;
                     let range = row_data[2] - row_data[1];
                     updateChartColor(new_data, row_data[1], row_data[2]);
                     set_chart_time_range(row_data[1] - range * 0.25, row_data[2] + range * 0.25);
@@ -1556,6 +1592,17 @@
                     }
                     row_body.appendChild(col_body);
                 }
+            }
+            //after the making rows loop, scroll the container to the highlighted row 
+            if (highlightedRowElement) {
+                console.log("The scroll should be at the view spot")
+                console.log("highlightedRowElement:", highlightedRowElement)
+                setTimeout(() => {
+                    highlightedRowElement.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center"
+                    });
+                }, 0);
             }
             let head = table.createTHead()
             let row = document.createElement("tr")
@@ -1615,8 +1662,8 @@
             let xData = data.map(item => item[5]); // 提取cmd_id作为横轴
             let yData = data.map(item => item[4]); // 提取uarch_rate(height)
 
-            console.log("xData:", xData)
-            console.log("yData:", yData)
+            //console.log("xData:", xData)
+            //console.log("yData:", yData)
 
             let totalPoints = data.length;
             let lessThanOnePoints = data.filter(item => item[4] < 1).length;
@@ -1879,8 +1926,8 @@
                     document.querySelector(".config-localmem").style.display = "none";
                 }
                 let new_op_record = processAddr(lmemRecord, num - 1);
-                console.log("old record:", lmemRecord)
-                console.log("op_Record:", new_op_record)
+                //console.log("old record:", lmemRecord)
+                //console.log("op_Record:", new_op_record)
                 document.querySelector("#show_localmem").onchange = createShowFunc("lmem-container", lmem_partition, new_op_record, "LOCAL MEM(Occupied)");
                 document.querySelector("#show_data_table").onchange = function(e) {
                     let container_id = "data-list"
