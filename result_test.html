@@ -14,10 +14,11 @@
     <div id="tab-container"></div>
     <div id="content-container"></div>
 
-    <!-- 表1 -->
+    <!-- 总表 -->
     <div id="summary-table"></div>
+    <div id="msg-container"></div>
 
-    <!-- 表2、3、4 -->
+    <!-- 分表 -->
     <div id="custom-tooltip" style="display: none; position: absolute; background: #fff; border: 1px solid #000; padding: 10px;"></div>
 
     <div id="config-container">
@@ -69,6 +70,14 @@
         .tabs div:hover {
             background-color: red;
             color: #fff;
+        }
+        
+        #msg-container {
+            width: 95%;
+            height: 800px;
+            margin: 80px auto;
+            border: 1px solid #ccc;
+            padding: 1em 1em;
         }
         
         #time-container2,
@@ -232,11 +241,13 @@
 
         $(document).ready(function() {
             generateTabs();
-            console.log("cycledata:", cycleData)
-            console.log("lmemData:", lmemData)
+            //console.log("cycledata:", cycleData)
+            //console.log("lmemData:", lmemData)
         });
     </script>
     <script>
+        echarts.debugMode = true;
+        console.log("cycledata:", cycleData)
         var all_charts = []
         var filtered_data = []
 
@@ -371,6 +382,216 @@
                 }
             }
             node.appendChild(table)
+        }
+
+        function createMsgChart(dataGroups, categories) {
+            let data = [];
+            let yAxisLabels = [];
+            let header = ["Msg", 'beginTime', 'endTime', 'duration', 'height', 'cmd', 'msgId', 'sdWtCount']
+                // Iterate through dataset and filter out send/wait msgs
+            for (let idx in dataGroups) {
+                ['WAIT', 'SEND'].forEach(type => {
+                    let category = `Core${idx} ${type}`;
+                    yAxisLabels.push(category);
+                });
+                dataGroups[idx].forEach(row => {
+                    let msgId = row[7];
+                    if (msgId) {
+                        let engine = categories[row[0]]
+                        let beginTime = row[1];
+                        let endTime = row[2];
+                        let duration = endTime - beginTime;
+                        let cmd = row[5];
+                        let funcName = row[6];
+                        let sdWtCount = row[8];
+                        const msgType = funcName.includes('send') ? 'SEND' : funcName.includes('wait') ? 'WAIT' : '';
+                        if (msgType !== '') {
+                            msgTypeIndex = yAxisLabels.indexOf(`Core${idx} ${msgType}`);
+                        }
+                        data.push([msgTypeIndex, beginTime, endTime, duration, -1, cmd, msgId, sdWtCount, engine]);
+                    }
+                });
+            }
+            console.log("data:", data)
+                //console.log("yAxislabel:", yAxisLabels)
+            let chart = echarts.init(document.getElementById('msg-container'));
+            let color_col = 6;
+            let msg_data = []
+            let category_time = []
+            let category_count = []
+            for (let i = 0; i < yAxisLabels.length; i++) {
+                category_time.push(0)
+                category_count.push(0)
+            }
+            let startTime = data.length > 0 ? data[0][1] : 0;
+            for (let i = 0; i < data.length; i++) {
+                if (startTime > data[i][1]) startTime = data[i][1];
+                category_time[data[i][0]] += data[i][2] - data[i][1];
+                category_count[data[i][0]] += 1;
+                let colorPalette = colors[calcColorIndex(data[i][color_col], colors.length)];
+                console.log("colorPalette:", colorPalette)
+                msg_data.push({
+                    name: `${data[i][3]}`,
+                    value: data[i],
+                    itemStyle: {
+                        normal: {
+                            opacity: 0.8,
+                            color: colorPalette,
+                            // borderColor: "#FFFFFF",
+                        }
+                    }
+                })
+            }
+            console.log("msg_data:", msg_data)
+            let new_categories = [];
+            for (let i = 0; i < yAxisLabels.length; i++) {
+                new_categories.push(yAxisLabels[i] +
+                    "\ncount=" + category_count[i]
+                )
+            }
+            let option = {
+                title: {
+                    text: 'Msg Time Chart',
+                    fontSize: 20,
+                    left: 'center',
+                },
+                tooltip: {
+                    alwaysShowContent: true,
+                    position: function(pos, params, el, elRect, size) {
+                        var obj = {
+                            top: pos[1] - 30
+                        };
+                        if (pos[0] + size.contentSize[0] > size.viewSize[0]) {
+                            obj['left'] = size.viewSize[0] - size.contentSize[0];
+                        } else {
+                            obj['left'] = pos[0];
+                        }
+                        return obj;
+                    },
+                    formatter: function(params) {
+                        let tip = `Msg_Id: ${params.value[6]}<br>Engine: ${params.value[8]}<br>Sd/Wt Count: ${params.value[7]}<br>begin: ${usec_str(params.value[1])}<br>end: ${usec_str(params.value[2])}<br>duration: ${usec_str(params.value[3])}`
+                        return tip;
+                    },
+                    axisPointer: {
+                        show: true,
+                        type: 'cross',
+                        lineStyle: {
+                            type: 'dashed',
+                            width: 1
+                        },
+                        label: {
+                            show: true,
+                            formatter: function(param) {
+                                if (param.axisDimension == 'x') {
+                                    return usec_str(param.value)
+                                }
+                                return param.value
+                            }
+                        }
+                    }
+                },
+                dataZoom: [{
+                    type: 'slider',
+                    filterMode: 'weakFilter',
+                    showDataShadow: false,
+                    height: 10,
+                    borderColor: 'transparent',
+                    backgroundColor: '#e2e2e2',
+                    handleIcon: 'M10.7,11.9H9.3c-4.9,0.3-8.8,4.4-8.8,9.4c0,5,3.9,9.1,8.8,9.4h1.3c4.9-0.3,8.8-4.4,8.8-9.4C19.5,16.3,15.6,12.2,10.7,11.9z M13.3,24.4H6.7v-1.2h6.6z M13.3,22H6.7v-1.2h6.6z M13.3,19.6H6.7v-1.2h6.6z', // jshint ignore:line
+                    handleSize: 20,
+                    handleStyle: {
+                        shadowBlur: 6,
+                        shadowOffsetX: 1,
+                        shadowOffsetY: 2,
+                        shadowColor: '#aaa'
+                    },
+                    bottom: 40,
+                    realtime: true,
+                    labelFormatter: ''
+                }, {
+                    type: 'inside',
+                    realtime: true,
+                    filterMode: 'weakFilter'
+                }],
+                grid: {
+                    height: 300
+                },
+                grid: {
+                    height: 600,
+                    bottom: 40,
+                    top: 80
+                },
+                xAxis: {
+                    min: startTime,
+                    scale: true,
+                    axisLabel: {
+                        formatter: function(val) {
+                            return (val);
+                        }
+                    },
+                },
+                yAxis: {
+                    data: new_categories
+
+                },
+                toolbox: {
+                    right: '10%',
+                    feature: {
+                        dataZoom: {
+                            yAxisIndex: 'none'
+                        },
+                        restore: {},
+                        saveAsImage: {},
+                    }
+                },
+                series: [{
+                    type: 'custom',
+                    renderItem: renderItem,
+                    encode: {
+                        x: [1, 2],
+                        y: 0
+                    },
+                    data: msg_data,
+                }]
+            };
+            let originalOption = JSON.parse(JSON.stringify(option));
+            if (option && typeof option === "object") {
+                chart.setOption(option, true);
+            }
+
+            let originalItemStyles = msg_data.map(item => item.itemStyle);
+            chart.on('mouseover', function(params) {
+                if (params.data) {
+                    let msgId = params.data.value[6];
+                    let option = JSON.parse(JSON.stringify(originalOption)); //make the deepcopy
+                    option.series[0].data.forEach((item, index) => {
+                        if (item.value[6] === msgId) {
+                            item.itemStyle = {
+                                normal: {
+                                    color: item.itemStyle.color,
+                                    opacity: 1
+                                }
+                            }; //highlight
+                        } else {
+                            item.itemStyle = {
+                                normal: {
+                                    color: item.itemStyle.color,
+                                    opacity: 0.2
+                                }
+                            }; //faint others
+                        }
+                    });
+                    chart.setOption(option);
+                }
+            });
+
+            chart.on('mouseout', function() {
+                let option = JSON.parse(JSON.stringify(originalOption));
+                option.series[0].data.forEach((item, index) => {
+                    item.itemStyle = originalItemStyles[index]; // Restore original itemStyle
+                });
+                chart.setOption(option);
+            });
         }
     </script>
     <script type="text/javascript">
@@ -521,8 +742,12 @@
             return col_data
         }
         //raw_data: 'category', 'begin_time', 'end_time', 'func_type', 'height', 'cmd', 'func_name', 'info'
+        let previousZoomRange = null;
+        let storedZoomRange = null;
+
         function showTimeChart(chart, header, raw_data, categories, color_col, title) {
             console.log("show time chart ing!")
+            console.log("previousZoomRange:", previousZoomRange)
             let data = []
             let category_time = []
             let category_count = []
@@ -650,11 +875,51 @@
                 toolbox: {
                     right: '10%',
                     feature: {
-                        dataZoom: {
-                            yAxisIndex: 'none'
-                        },
+                        //dataZoom: {
+                        //    yAxisIndex: 'none',
+                        //    }
+                        //},
                         restore: {},
-                        saveAsImage: {}
+                        saveAsImage: {},
+                        myStoreTool: {
+                            show: true,
+                            title: "留存当前缩放区域",
+                            icon: 'path://M797.6 383.3h-62.7v-74.1c0-56.7-22.4-109.9-63.1-150-40.6-39.9-94.5-61.9-151.8-61.9h-16c-57.3,0-111.2, 22-151.8,61.9-40.7, 40-63.1, 93.3-63.1, 150v74.1h-62.7c-71.3, 0-129.3, 58-129.3, 129.3v284.7c0, 71.3, 58, 129.3, 129.3, 129.3h571.3c71.3, 0, 129.3-58, 129.3-129.3V512.6c-0.1-71.3-58.1-129.3-129.4-129.3z, m-448.5-74.1c0-83.7, 69.5-151.8, 154.9-151.8h16c85.4,0 ,154.9, 68.1, 154.9, 151.8v74.1H349.1v-74.1z, m517.8, 488.1c0, 38.2-31.1, 69.3-69.3, 69.3H226.4c-38.2, 0-69.3-31.1-69.3-69.3V512.6c0-38.2, 31.1-69.3, 69.3-69.3h571.3c38.2, 0, 69.3, 31.1, 69.3, 69.3v284.7z, M512 485.8c-49.4 0-89.7 40.2-89.7 89.7 0 38.9 24.9 72.1 59.7 84.5v116.5c0 16.6 13.4 30 30 30s30-13.4 30-30V660c34.7-12.4 59.7-45.6 59.7-84.5 0-49.4-40.3-89.7-89.7-89.7z m0 60c16.4 0 29.7 13.3 29.7 29.7s-13.3 29.7-29.7 29.7-29.7-13.3-29.7-29.7 13.3-29.7 29.7-29.7z',
+                            onclick: function() {
+                                let option = chart.getOption();
+                                let {
+                                    startValue,
+                                    endValue
+                                } = option.dataZoom[1];
+                                storedZoomRange = {
+                                    startValue: startValue,
+                                    endValue: endValue
+                                };
+                            }
+                        },
+                        myRevertTool: { //custom button
+                            show: true,
+                            title: "还原到上一缩放区域",
+                            icon: 'path://M771.7,526.2c-59.6-59.6-138.8-92.4-223-92.4h-284L402.6, 296c11.7-11.7, 11.7-30.7, 0-42.4s-30.7-11.7-42.4 0L168.7, 445c-11.7, 11.7-11.7, 30.6-0.1, 42.3l191.5, 193.1c5.9, 5.9, 13.6, 8.9, 21.3, 8.9, 7.6, 0, 15.3-2.9, 21.1-8.7, 11.8-11.7, 11.8-30.7, 0.2-42.4L259.6, 493.9h289.2c68.2, 0, 132.3, 26.6, 180.6, 74.8, 48.2, 48.2, 74.8, 112.4, 74.8, 180.6, 0, 16.6, 13.4, 30, 30, 30s30-13.4, 30-30c-0.1-84.3-32.9-163.5-92.5-223.1z', // Icon path
+                            onclick: function() {
+                                //if (previousZoomRange) {
+                                //    chart.dispatchAction({
+                                //        type: 'dataZoom',
+                                //        dataZoomIndex: 1,
+                                //        startValue: previousZoomRange.startValue,
+                                //        endValue: previousZoomRange.endValue,
+                                //    });
+                                //}
+                                if (storedZoomRange) {
+                                    chart.dispatchAction({
+                                        type: 'dataZoom',
+                                        dataZoomIndex: 1,
+                                        startValue: storedZoomRange.startValue,
+                                        endValue: storedZoomRange.endValue,
+                                    });
+                                }
+                            }
+                        }
                     }
                 },
                 series: [{
@@ -699,7 +964,6 @@
             }
 
             if (matchedIndex !== null) {
-                //let displayData = filtered_data.slice(rangeStart, rangeEnd); this sould limit the size of data table but result in refreshing error
                 let highlightedRow = matchedIndex - rangeStart;
                 clickedRowIndex = matchedIndex;
 
@@ -729,6 +993,19 @@
                 filterBlock.style = "text-align: center";
                 dom.appendChild(filterBlock)
                 chartHandle = echarts.init(chartNode);
+                chartHandle.on("datazoom", (params) => {
+                    let option = chartHandle.getOption();
+                    let {
+                        startValue,
+                        endValue
+                    } = option.dataZoom[1];
+
+                    // Store the current zoom range before updating
+                    previousZoomRange = {
+                        startValue: startValue,
+                        endValue: endValue
+                    };
+                });
                 for (let col of filter_cols) {
                     let col_data = uniqueColumnData(data, col)
                     col_data.sort()
@@ -761,13 +1038,10 @@
                             filtered_data = data
                         }
                         showTimeChart(chartHandle, header, filtered_data, categories, color_col)
-
-
                     }));
                 }
                 showTimeChart(chartHandle, header, data, categories, color_col)
             }
-            console.log("options in showDataInChart:", chartHandle.getOption()); // Print the chart's options
             if (chartHandle) {
                 chartHandle.set_time_range = function(begin_usec, end_usec) {
                         chartHandle.dispatchAction({
@@ -785,6 +1059,7 @@
                     //     let {startValue, endValue} = option.dataZoom[1]
                     //     set_chart_time_range(startValue, endValue, chartHandle)
                     // })
+
                 chartHandle.on("click", (params) => {
                     let val = params.value
                     if (params.seriesIndex == 0) {
@@ -830,6 +1105,7 @@
                     updateDataTable(begin, end, original_data);
                 })
             }
+
             return chartHandle
         }
     </script>
@@ -1589,7 +1865,7 @@
                     row_body.appendChild(col_body);
                 }
             }
-            //after the making rows loop, scroll the container to the highlighted row 
+            //after the making rows loop, scroll the container to the highlighted row
             if (highlightedRowElement) {
                 console.log("The scroll should be at the view spot")
                 console.log("highlightedRowElement:", highlightedRowElement)
@@ -1723,19 +1999,20 @@
         let charts = []
 
         // 生成饼图
-        function processAndGeneratePieChart(elementId, rawData, pieTitle) {
+        function processAndGeneratePieChart(elementId, rawData, header, pieTitle) {
             let nameData = [];
             let typeData = [];
             let functionNames = {};
             let functionTypes = {};
             let totalDuration = 0;
-
+            funcTypeIndex = header.indexOf("func_type");
+            funcNameIndex = header.indexOf("func_name")
             for (let i = 0; i < rawData.length; i++) { //["category", "begin_time", "end_time", "func_type", "height", "cmd", "func_name", "info"]
                 let startCycle = rawData[i][1];
                 let endCycle = rawData[i][2];
                 let duration = endCycle - startCycle;
-                let functionType = rawData[i][3];
-                let functionName = rawData[i][6];
+                let functionType = rawData[i][funcTypeIndex];
+                let functionName = rawData[i][funcTypeIndex];
 
                 totalDuration += duration;
 
@@ -1858,8 +2135,7 @@
                 document.querySelector(".config-localmem"),
                 document.querySelector(".config-item:nth-child(3)")
             ];
-            var checkBoxes = ["show_data_table", "show_localmem", "tiu_uarch_rate"];
-
+            let checkBoxes = ["show_data_table", "show_localmem", "tiu_uarch_rate"];
             if (tabName === "Overall View") {
                 // Hide the checkbox containers
                 checkBoxContainers.forEach((container) => {
@@ -1882,6 +2158,9 @@
                 if (typeof(summary_header) !== "undefined") {
                     showDataTable("summary-table", summary_header, summary_data, summary_caption)
                 }
+                createMsgChart(cycleData, categories);
+                document.getElementById('msg-container').style.display = 'block'; // Show the message chart container
+
             } else {
                 console.log("我在core page")
                 checkBoxContainers.forEach((container) => {
@@ -1889,6 +2168,7 @@
                 });
 
                 document.getElementById('summary-table').style.display = 'none';
+                document.getElementById('msg-container').style.display = 'none';
                 let id = e.target.outerText.split(' ')[1]; // Get the ID number from tab name
                 document.querySelectorAll('[id^="time-container"]').forEach(el => el.style.display = 'none'); // Hide all time containers
 
@@ -1911,7 +2191,8 @@
             }
         });
 
-        let color_col = 6; //index of the data to display the color in chart
+        const color_col = time_header.indexOf(time_header.includes("func_name") ? "func_name" : "func_type"); //index of the data to display the color in chart
+        console.log("color_col:", color_col)
         const processAndShowData = (containerId, cycleData, chartIds, lmemRecord, num) => {
             setTimeout(() => {
                 let chart = showDataInChart(containerId, time_header, cycleData, categories, filter_cols, color_col);
@@ -1921,10 +2202,14 @@
                 if (lmemRecord.length == 0) {
                     document.querySelector(".config-localmem").style.display = "none";
                 }
-                let new_op_record = processAddr(lmemRecord, num - 1);
+                hexPattern = /^[0-9A-Fa-f]+$/;
+                if (hexPattern.test(lmemRecord)) {
+                    let lmemRecord = processAddr(lmemRecord, num - 1);
+
+                }
                 //console.log("old record:", lmemRecord)
                 //console.log("op_Record:", new_op_record)
-                document.querySelector("#show_localmem").onchange = createShowFunc("lmem-container", lmem_partition, new_op_record, "LOCAL MEM(Occupied)");
+                document.querySelector("#show_localmem").onchange = createShowFunc("lmem-container", lmem_partition, lmemRecord, "LOCAL MEM(Occupied)");
                 document.querySelector("#show_data_table").onchange = function(e) {
                     let container_id = "data-list"
                     if (e.target.checked) {
@@ -1944,12 +2229,14 @@
                 if (tiu.length > 0) {
                     createRateLine(`rate-line-container`, tiu, 'TIU uArch Rate');
                 }
-                processAndGeneratePieChart(chartIds[0], tiu, "TIU");
-                processAndGeneratePieChart(chartIds[1], gdma, "GDMA");
-                processAndGeneratePieChart(chartIds[2], sdma, "SDMA");
+
+                if (time_header.includes("func_name") && time_header.includes("func_type")) {
+                    processAndGeneratePieChart(chartIds[0], tiu, time_header, "TIU");
+                    processAndGeneratePieChart(chartIds[1], gdma, time_header, "GDMA");
+                    processAndGeneratePieChart(chartIds[2], sdma, time_header, "SDMA");
+                }
             }, 20);
         };
-
 
         let index = 0
         document.getElementById("tiu_uarch_rate").onclick = function() {
